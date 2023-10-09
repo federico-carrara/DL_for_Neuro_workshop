@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -12,12 +13,33 @@ def load_eeg_data_file(
     path_to_file: str
 ) -> torch.tensor:
     raw = loadmat(path_to_file)
-    dims = raw["djc_eeg1"].shape
-    data = torch.empty((15, dims[0], dims[1]), dtype=torch.float64)
+    pattern = list(raw.keys())[4].split("_")[0]
+    data = []
     for i in range(15):
-        data[i] = raw[f"djc_eeg{i + 1}"]
+        data.append(torch.tensor(raw[f"{pattern}_eeg{i + 1}"]))
     return data
 #--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+def windowize_data(
+    data: List[torch.tensor],
+    length: int,
+    overlap: int
+) -> np.ndarray: 
+
+    assert overlap < length, f"Window overlapping {overlap} cannot be greater than the window length {length}."
+
+    windowized_data = []
+    for signal in data:
+        ptr = 0
+        while ptr + length < signal.shape[1]:
+            windowized_data.append(signal[:, ptr:(ptr + length)])
+            ptr += length - overlap
+
+    return windowized_data
+#--------------------------------------------------------------------------
+
+
 
 #--------------------------------------------------------------------------
 class TrainDataset(Dataset):
@@ -25,18 +47,23 @@ class TrainDataset(Dataset):
         self, 
         path_to_data_dir: str,
         path_to_labels: str,
+        win_length: int,
+        win_overlap: int,
         do_augmentation: Optional[bool] = True
     ):
         # Notice: N_subjects = 15, N_recordings=45 (N_subjects*3)
         self.N_subjects = 15
         self.N_recordings = 45
+        self.win_length = win_length
+        self.win_overlap = win_overlap
 
         # Load data store them in a torch tensor
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
         data = []
         for eeg_file in eeg_files:
             curr_data = load_eeg_data_file(os.path.join(path_to_data_dir, eeg_file))
-            data.append(curr_data)
+            curr_windowized_data = windowize_data(curr_data, self.win_length, self.win_overlap)
+            data.append(curr_windowized_data)
         self.data = torch.tensor(data)
 
         # Load labels
@@ -46,7 +73,7 @@ class TrainDataset(Dataset):
         
         # Boolean: if true apply transformation for data augmentation
         if do_augmentation:
-            self.transform = transform
+            self.transform = add_gaussian_noise
         else:
             self.transform = None
 
@@ -62,8 +89,9 @@ class TrainDataset(Dataset):
 
         return sample, label
 
-    def transform(self):
-        
+    def add_gaussian_noise(self):
+        return
+
 #--------------------------------------------------------------------------
 
 def plot_eeg_data(
@@ -71,12 +99,7 @@ def plot_eeg_data(
 ) -> None:
     return 
 
-def windowize_data(
-    data: np.ndarray,
-    length: int,
-    overlap: int
-) -> np.ndarray: 
-    return
+
 
 def find_bad_channels(
     data: np.ndarray
