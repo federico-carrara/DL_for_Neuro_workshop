@@ -127,6 +127,7 @@ class EEGNET(nn.Module):
             separable_kernel_size = 16,
             pooling_size = (2, 5), 
             dropout_prob = 0.5, 
+            hidden_size = 128,
     ):
         super(EEGNET, self).__init__()
         
@@ -181,13 +182,11 @@ class EEGNET(nn.Module):
 
         self.dropout = nn.Dropout(dropout_prob)
         self.flatten = nn.Flatten()
-        self.fc1 = nn.Sequential(
-            nn.Linear(, ),
-            nn.ReLU(), 
-        )
-        self.fc2 = nn.Sequential(
-            nn.Linear(, ),
-        )
+
+        def fc_layer(self, in_size, out_size):
+            self.fc = nn.Linear(in_size, out_size)
+        
+        self.relu = nn.ReLU()
 
     def forward(self, x):
         x = self.temporal_conv(x)
