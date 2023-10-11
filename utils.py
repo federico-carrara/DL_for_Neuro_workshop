@@ -1,9 +1,11 @@
 import os
 import re
+import string
 import numpy as np
 import torch
+import torch.nn as nn
 import matplotlib.pyplot as plt
-import string
+from random import random
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 from scipy.io import loadmat
@@ -51,6 +53,12 @@ def add_gaussian_noise(data: torch.tensor):
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
+def shuffle_channels(data: torch.tensor):
+    permutation = torch.randperm(data.shape[0])
+    return data[permutation, :]
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
 class TrainDataset(Dataset):
     def __init__(
         self, 
@@ -58,7 +66,7 @@ class TrainDataset(Dataset):
         path_to_labels: str,
         win_length: int,
         win_overlap: int,
-        do_augmentation: Optional[bool] = True
+        transform: Optional[bool] = True
     ):
         # Notice: N_subjects = 15, N_recordings=45 (N_subjects*3)
         self.N_subjects = 15
@@ -83,10 +91,7 @@ class TrainDataset(Dataset):
         self.labels = curr_labels.repeat(self.N_recordings)
         
         # Boolean: if true apply transformation for data augmentation
-        if do_augmentation:
-            self.transform = add_gaussian_noise
-        else:
-            self.transform = None
+        self.transform = transform
 
     def __len__(self):
         return len(self.data)
@@ -96,13 +101,104 @@ class TrainDataset(Dataset):
         label = self.labels[index]
 
         if self.transform:
-            sample = self.transform(sample)
+            if random() > 0.2:
+                sample = shuffle_channels(sample)
+            if random() > 0.2:
+                sample = add_gaussian_noise(sample)
 
         return sample, label
-
 #--------------------------------------------------------------------------
 
+#--------------------------------------------------------------------------
 def plot_eeg_data(
     data: np.ndarray
 ) -> None:
     return 
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+class EEGNET(nn.Module):
+    def __init__(
+            self, 
+            num_classes = 3,
+            num_out_channels = 16,
+            temporal_kernel_size = 64,
+            spatial_kernel_size = 8, 
+            separable_kernel_size = 16,
+            pooling_size = (2, 5), 
+            dropout_prob = 0.5, 
+    ):
+        super(EEGNET, self).__init__()
+        
+        self.temporal_conv = nn.Sequential(
+            nn.Conv2d(
+                in_channels=1,
+                out_channels=num_out_channels,
+                kernel_size=[1, temporal_kernel_size],
+                stride=1, 
+                bias=True,
+                padding="same"
+            ), 
+            nn.BatchNorm2d(num_features=num_out_channels),
+        )
+        self.spatial_conv = nn.Sequential(
+            nn.Conv2d(
+                in_channels=num_out_channels,
+                out_channels=num_out_channels * 2,
+                kernel_size=[spatial_kernel_size, 1],
+                stride=1,
+                bias=True,
+                padding="valid"
+            ),
+            nn.BatchNorm2d(num_features=num_out_channels * 2),
+            nn.ReLU(True),
+        )
+
+        self.avg_pool = nn.AvgPool2d(
+            kernel_size=pooling_size, 
+            stride=pooling_size, 
+            padding=0
+        )
+
+        self.seperable_conv = nn.Sequential(
+            nn.Conv2d(
+                in_channels=num_out_channels * 2,
+                out_channels=num_out_channels * 2,
+                kernel_size=[1, separable_kernel_size],
+                padding="same",
+                bias=True
+            ),
+            nn.Conv2d(
+                in_channels=num_out_channels * 2,
+                out_channels=num_out_channels * 2,
+                kernel_size=[1, 1], 
+                padding="same",
+                bias=True
+            ),
+            nn.BatchNorm2d(num_features=num_out_channels * 2),
+            nn.ReLU(True),
+        )
+
+        self.dropout = nn.Dropout(dropout_prob)
+        self.flatten = nn.Flatten()
+        self.fc1 = nn.Sequential(
+            nn.Linear(, ),
+            nn.ReLU(), 
+        )
+        self.fc2 = nn.Sequential(
+            nn.Linear(, ),
+        )
+
+    def forward(self, x):
+        x = self.temporal_conv(x)
+        x = self.spatial_conv(x)
+        x = self.avg_pool(x)
+        x = self.dropout(x)
+        x = self.seperable_conv(x)
+        x = self.avg_pool(x)
+        x = self.dropout(x)
+        x = self.flatten(x)
+        x = self.fc1(x)
+        x = self.dropout(x)
+        out = self.fc2(x)
+        return out
