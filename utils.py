@@ -87,7 +87,7 @@ class TrainDataset(Dataset):
             curr_labels = [torch.tensor([labels[i]] * num_windows[i]) for i in range(len(curr_data))]
             curr_labels = torch.concat(curr_labels, axis=0)
         data = [tens.unsqueeze(0) for tens in data]
-        self.data = torch.concat(data, axis=0)
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.labels = curr_labels.repeat(self.N_recordings)
         
         # Boolean: if true apply transformation for data augmentation
@@ -117,19 +117,20 @@ def plot_eeg_data(
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
-class EEGNET(nn.Module):
+class EEGNet(nn.Module):
     def __init__(
             self, 
-            num_classes = 3,
-            num_out_channels = 16,
-            temporal_kernel_size = 64,
-            spatial_kernel_size = 8, 
-            separable_kernel_size = 16,
-            pooling_size = (2, 5), 
-            dropout_prob = 0.5, 
-            hidden_size = 128,
+            input_size: Tuple[int, int],
+            num_classes: Optional[int] = 3,
+            num_out_channels: Optional[int] = 16,
+            temporal_kernel_size: Optional[int] = 64,
+            spatial_kernel_size: Optional[int] = 8, 
+            separable_kernel_size: Optional[int] = 16,
+            pooling_size: Optional[Tuple[int, int]] = (2, 5), 
+            dropout_prob: Optional[float] = 0.5, 
+            hidden_size: Optional[int] = 128,
     ):
-        super(EEGNET, self).__init__()
+        super().__init__()
         
         self.temporal_conv = nn.Sequential(
             nn.Conv2d(
@@ -182,22 +183,35 @@ class EEGNET(nn.Module):
 
         self.dropout = nn.Dropout(dropout_prob)
         self.flatten = nn.Flatten()
-
-        def fc_layer(self, in_size, out_size):
-            self.fc = nn.Linear(in_size, out_size)
-        
-        self.relu = nn.ReLU()
-
+        flatten_size = int(
+            num_out_channels * 2 * (input_size[0] - 2 * spatial_kernel_size  + 2) *\
+            input_size[1] / pooling_size[0]**2 / pooling_size[1]**2 
+        )
+        self.fc1 = nn.Sequential(
+            nn.Linear(in_features=flatten_size, out_features=hidden_size),
+            nn.BatchNorm1d(num_features=hidden_size),
+            nn.ReLU(True)
+        )
+        self.fc2 = nn.Linear(in_features=hidden_size, out_features=num_classes)   
+    
     def forward(self, x):
         x = self.temporal_conv(x)
+        print(x.shape)
         x = self.spatial_conv(x)
+        print(x.shape)
         x = self.avg_pool(x)
+        print(x.shape)
         x = self.dropout(x)
         x = self.seperable_conv(x)
+        print(x.shape)
         x = self.avg_pool(x)
+        print(x.shape)
         x = self.dropout(x)
         x = self.flatten(x)
+        print(x.shape)
         x = self.fc1(x)
+        print(x.shape)
         x = self.dropout(x)
         out = self.fc2(x)
+        print(out.shape)
         return out
