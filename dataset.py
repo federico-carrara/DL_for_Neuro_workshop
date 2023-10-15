@@ -37,8 +37,10 @@ class TrainDataset(Dataset):
             curr_labels = [torch.tensor([labels[i]] * num_windows[i]) for i in range(len(curr_data))]
             curr_labels = torch.concat(curr_labels, axis=0)
         data = [tens.unsqueeze(0) for tens in data]
-        self.data = torch.concat(data, axis=0).unsqueeze(1).to(torch.float32)
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels = self.labels.type(torch.int64)
         
         # Boolean: if true apply transformation for data augmentation
         self.data_augmentation = data_augmentation
@@ -87,8 +89,10 @@ class ValidationDataset(Dataset):
             curr_labels = [torch.tensor([labels[i]] * num_windows[i]) for i in range(len(curr_data))]
             curr_labels = torch.concat(curr_labels, axis=0)
         data = [tens.unsqueeze(0) for tens in data]
-        self.data = torch.concat(data, axis=0).unsqueeze(1).to(torch.float32)
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels = self.labels.type(torch.int64)
 
     def __len__(self):
         return len(self.data)
@@ -128,8 +132,10 @@ class TestDataset(Dataset):
             curr_labels = [torch.tensor([labels[i]] * num_windows[i]) for i in range(len(curr_data))]
             curr_labels = torch.concat(curr_labels, axis=0)
         data = [tens.unsqueeze(0) for tens in data]
-        self.data = torch.concat(data, axis=0).unsqueeze(1).to(torch.float32)
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels = self.labels.type(torch.int64)
 
     def __len__(self):
         return len(self.data)

@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+from torcheval.metrics.functional import (
+    multiclass_accuracy,
+    multiclass_f1_score
+)
 from torch import optim
 from typing import Tuple, Optional, Dict, Iterable
 
@@ -157,14 +161,22 @@ class EEGNet(pl.LightningModule):
         
         # network output
         out = self.model(x)
+        print(out, out.shape, out.type)
         
-        # compute loss
+        # compute loss & log it
         loss = self.loss_fun(out, y)
         
-        # store value in logs
-        self.log(
-            'train_loss', loss, on_step=True, 
-            on_epoch=True, prog_bar=True, batch_size=x.size()[0]
+        # compute metrics & log them
+        accuracy = multiclass_accuracy(input=out, target=y)
+        f1_score = multiclass_f1_score(input=out, target=y, num_classes=out.shape[-1]) 
+
+        # log loss and metrics
+        self.log_dict(
+            {'train_loss': loss, "train_accuracy": accuracy, "train_f1_score": f1_score},
+            on_step=True, 
+            on_epoch=True, 
+            prog_bar=True,
+            logger=True
         )
         
         return loss
@@ -187,13 +199,23 @@ class EEGNet(pl.LightningModule):
         
         # network output
         out = self.model(x)
+        print(out, out.shape, out.dtype)
+        print(y, y.shape, y.dtype)
         
         # compute loss
         loss = self.loss_fun(out, y)
 
-        self.log(
-            'val_loss', loss, on_step=False,
-            on_epoch=True, prog_bar=True, batch_size=x.size()[0]
+        # compute metrics & log them
+        accuracy = multiclass_accuracy(input=out, target=y)
+        f1_score = multiclass_f1_score(input=out, target=y, num_classes=out.shape[-1]) 
+
+        # log loss and metrics
+        self.log_dict(
+            {'val_loss': loss, "val_accuracy": accuracy, "val_f1_score": f1_score},
+            on_step=True, 
+            on_epoch=True, 
+            prog_bar=True,
+            logger=True
         )
 
         return loss
@@ -220,16 +242,10 @@ class EEGNet(pl.LightningModule):
     
 
     def configure_optimizers(self):
-        opt = optim.Adam(
+        optimizer = optim.Adam(
             self.parameters(), lr=self.lr, betas=self.betas, weight_decay=self.weight_decay
         )
-        return {
-            "optimizer": opt,
-            "lr_scheduler": {
-                "scheduler": optim.lr_scheduler.ReduceLROnPlateau(
-                    optimizer=opt, mode='min', factor=0.5, patience=20, min_lr=1e-7
-                ),
-                "monitor": "val_loss",
-                "frequency": 1
-            },
-        }
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer, mode='min', factor=0.5, patience=15, min_lr=1e-7
+        )
+        return [optimizer], [{"scheduler": scheduler,"monitor": "val_loss", "interval": "epoch", "frequency": 1}]
