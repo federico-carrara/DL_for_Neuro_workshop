@@ -1,20 +1,30 @@
 import os
-import re
 import string
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import pytorch_lightning as pl
 import matplotlib.pyplot as plt
+from torch import optim
 from random import random
 from tqdm import tqdm
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from scipy.io import loadmat
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Union, Iterable
+
+"""
+Legend for tensors dimensions:
+    - B = batch size 
+    - C = number of channels in the network layers.
+    - M = number of EEG channels.
+    - W = number of time points in a signal window.
+"""
 
 #--------------------------------------------------------------------------
 def load_eeg_data_file(
     path_to_file: str
-) -> torch.tensor:
+) -> torch.Tensor:
     raw = loadmat(path_to_file)
     pattern = list(raw.keys())[4].split("_")[0]
     data = []
@@ -25,10 +35,10 @@ def load_eeg_data_file(
 
 #--------------------------------------------------------------------------
 def windowize_signal(
-    data: List[torch.tensor],
+    data: List[torch.Tensor],
     length: int,
     overlap: int
-) -> Tuple[List[torch.tensor], List[int]]: 
+) -> Tuple[List[torch.Tensor], List[int]]: 
 
     assert overlap < length, f"Window overlapping {overlap} cannot be greater than the window length {length}."
 
@@ -47,13 +57,13 @@ def windowize_signal(
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
-def add_gaussian_noise(data: torch.tensor):
+def add_gaussian_noise(data: torch.Tensor):
     noise = torch.normal(0, 0.2, size=(data.shape[0], data.shape[1]))
     return data + noise
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
-def shuffle_channels(data: torch.tensor):
+def shuffle_channels(data: torch.Tensor):
     permutation = torch.randperm(data.shape[0])
     return data[permutation, :]
 #--------------------------------------------------------------------------
@@ -87,7 +97,7 @@ class TrainDataset(Dataset):
             curr_labels = [torch.tensor([labels[i]] * num_windows[i]) for i in range(len(curr_data))]
             curr_labels = torch.concat(curr_labels, axis=0)
         data = [tens.unsqueeze(0) for tens in data]
-        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.data = torch.concat(data, axis=0).unsqueeze(1).to(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
         
         # Boolean: if true apply transformation for data augmentation
@@ -117,14 +127,14 @@ def plot_eeg_data(
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
-class EEGNet(nn.Module):
+class EEGNetModel(pl.LightningModule):
     def __init__(
             self, 
             input_size: Tuple[int, int],
             num_classes: Optional[int] = 3,
             num_out_channels: Optional[int] = 16,
             temporal_kernel_size: Optional[int] = 64,
-            spatial_kernel_size: Optional[int] = 8, 
+            spatial_kernel_size: Optional[int] = 7, 
             separable_kernel_size: Optional[int] = 16,
             pooling_size: Optional[Tuple[int, int]] = (2, 5), 
             dropout_prob: Optional[float] = 0.5, 
@@ -184,7 +194,7 @@ class EEGNet(nn.Module):
         self.dropout = nn.Dropout(dropout_prob)
         self.flatten = nn.Flatten()
         flatten_size = int(
-            num_out_channels * 2 * (input_size[0] - 2 * spatial_kernel_size  + 2) *\
+            num_out_channels * 2 * (input_size[0] - spatial_kernel_size  + 1) *\
             input_size[1] / pooling_size[0]**2 / pooling_size[1]**2 
         )
         self.fc1 = nn.Sequential(
@@ -196,22 +206,152 @@ class EEGNet(nn.Module):
     
     def forward(self, x):
         x = self.temporal_conv(x)
-        print(x.shape)
         x = self.spatial_conv(x)
-        print(x.shape)
         x = self.avg_pool(x)
-        print(x.shape)
         x = self.dropout(x)
         x = self.seperable_conv(x)
-        print(x.shape)
         x = self.avg_pool(x)
-        print(x.shape)
         x = self.dropout(x)
         x = self.flatten(x)
-        print(x.shape)
         x = self.fc1(x)
-        print(x.shape)
         x = self.dropout(x)
-        out = self.fc2(x)
-        print(out.shape)
-        return out
+        x = self.fc2(x)
+        return x
+
+
+class EEGNet(pl.LightningModule):
+    def __init__(
+            self, 
+            model_parameters: Dict,
+            lr: Optional[float] = 1e-4, 
+            betas: Optional[List[float]] = [0.9, 0.99], 
+            weight_decay: Optional[float] = 1e-6, 
+            epochs: Optional[int] = 1000, 
+        ):
+        '''
+        '''
+        super().__init__()
+
+        self.save_hyperparameters()
+        self.loss_fun = nn.CrossEntropyLoss()
+        self.model = EEGNetModel(**model_parameters)
+        self.lr = lr
+        self.betas = betas
+        self.weight_decay = weight_decay
+        self.epochs = epochs
+
+    def forward(
+            self, 
+            input: Tuple[torch.Tensor, int]
+        ):
+        '''
+        Parameters:
+        -----------
+            input: Tuple[torch.Tensor, int]
+                Tensor of size (B, 1, M, W), plus an integer label.
+
+        Returns:
+        --------
+            x: (torch.Tensor)
+                Tensor of size (B, 3, M)
+        '''
+
+        # extract input (x point cloud, y label)
+        x, y = input
+        x = self.model(x)
+        return x
+    
+
+    def training_step(
+            self, 
+            train_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            train_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = train_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        # compute loss
+        loss = self.loss_fun(out, y)
+        
+        # store value in logs
+        self.log(
+            'train_loss', loss, on_step=True, 
+            on_epoch=True, prog_bar=True, batch_size=x.size()[0]
+        )
+        
+        return loss
+    
+
+    def validation_step(
+            self, 
+            val_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            val_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = val_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        # compute loss
+        loss = self.loss_fun(out, y)
+
+        self.log(
+            'val_loss', loss, on_step=False,
+            on_epoch=True, prog_bar=True, batch_size=x.size()[0]
+        )
+
+        return loss
+    
+    def test_step(
+            self, 
+            test_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            test_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = test_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        return self.loss_fun(out, y)
+    
+
+    def configure_optimizers(self):
+        opt = optim.Adam(
+            self.parameters(), lr=self.lr, betas=self.betas, weight_decay=self.weight_decay
+        )
+        return {
+            "optimizer": opt,
+            "lr_scheduler": {
+                "scheduler": optim.lr_scheduler.ReduceLROnPlateau(
+                    optimizer=opt, mode='min', factor=0.5, patience=20, min_lr=1e-7
+                ),
+                "monitor": "val_loss",
+                "frequency": 1
+            },
+        }
