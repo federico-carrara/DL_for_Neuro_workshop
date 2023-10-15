@@ -72,8 +72,8 @@ class EEGNetModel(pl.LightningModule):
         self.dropout = nn.Dropout(dropout_prob)
         self.flatten = nn.Flatten()
         flatten_size = int(
-            num_out_channels * 2 * (input_size[0] - spatial_kernel_size  + 1) *\
-            input_size[1] / pooling_size[0]**2 / pooling_size[1]**2 
+            num_out_channels * 2 * (input_size[1] - spatial_kernel_size  + 1) *\
+            input_size[2] / pooling_size[0]**2 / pooling_size[1]**2 
         )
         self.fc1 = nn.Sequential(
             nn.Linear(in_features=flatten_size, out_features=hidden_size),
@@ -104,7 +104,7 @@ class EEGNet(pl.LightningModule):
             lr: Optional[float] = 1e-4, 
             betas: Optional[Iterable[float]] = [0.9, 0.99], 
             weight_decay: Optional[float] = 1e-6, 
-            epochs: Optional[int] = 1000, 
+            epochs: Optional[int] = 100, 
         ):
         '''
         '''

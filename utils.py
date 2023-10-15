@@ -50,7 +50,7 @@ def windowize_signal(
 
 #--------------------------------------------------------------------------
 def add_gaussian_noise(data: torch.Tensor):
-    noise = torch.normal(0, 0.2, size=(data.shape[0], data.shape[1]))
+    noise = torch.normal(0, 0.2, size=(data.shape))
     return data + noise
 #--------------------------------------------------------------------------
 
@@ -64,5 +64,6 @@ def shuffle_channels(data: torch.Tensor):
 def plot_eeg_data(
     data: np.ndarray
 ) -> None:
+    
     return 
 #--------------------------------------------------------------------------
