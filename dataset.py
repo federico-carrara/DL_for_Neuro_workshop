@@ -40,6 +40,7 @@ class TrainDataset(Dataset):
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels += 1
         self.labels = self.labels.type(torch.int64)
         
         # Boolean: if true apply transformation for data augmentation
@@ -92,6 +93,7 @@ class ValidationDataset(Dataset):
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels += 1
         self.labels = self.labels.type(torch.int64)
 
     def __len__(self):
@@ -135,6 +137,7 @@ class TestDataset(Dataset):
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = curr_labels.repeat(self.N_recordings)
+        self.labels += 1
         self.labels = self.labels.type(torch.int64)
 
     def __len__(self):

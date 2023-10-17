@@ -161,7 +161,6 @@ class EEGNet(pl.LightningModule):
         
         # network output
         out = self.model(x)
-        print(out, out.shape, out.type)
         
         # compute loss & log it
         loss = self.loss_fun(out, y)
@@ -173,7 +172,7 @@ class EEGNet(pl.LightningModule):
         # log loss and metrics
         self.log_dict(
             {'train_loss': loss, "train_accuracy": accuracy, "train_f1_score": f1_score},
-            on_step=True, 
+            on_step=False, 
             on_epoch=True, 
             prog_bar=True,
             logger=True
@@ -199,8 +198,6 @@ class EEGNet(pl.LightningModule):
         
         # network output
         out = self.model(x)
-        print(out, out.shape, out.dtype)
-        print(y, y.shape, y.dtype)
         
         # compute loss
         loss = self.loss_fun(out, y)
@@ -212,7 +209,7 @@ class EEGNet(pl.LightningModule):
         # log loss and metrics
         self.log_dict(
             {'val_loss': loss, "val_accuracy": accuracy, "val_f1_score": f1_score},
-            on_step=True, 
+            on_step=False, 
             on_epoch=True, 
             prog_bar=True,
             logger=True
