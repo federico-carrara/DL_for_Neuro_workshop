@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
-import pytorch_lightning as pl
+try:
+    import pytorch_lightning as pl
+except:
+    import lightining as pl
 from torcheval.metrics.functional import (
     multiclass_accuracy,
     multiclass_f1_score
@@ -172,8 +175,8 @@ class EEGNet(pl.LightningModule):
         # log loss and metrics
         self.log_dict(
             {'train_loss': loss, "train_accuracy": accuracy, "train_f1_score": f1_score},
-            on_step=False, 
-            on_epoch=True, 
+            on_step=True, 
+            on_epoch=False, 
             prog_bar=True,
             logger=True
         )
@@ -209,8 +212,8 @@ class EEGNet(pl.LightningModule):
         # log loss and metrics
         self.log_dict(
             {'val_loss': loss, "val_accuracy": accuracy, "val_f1_score": f1_score},
-            on_step=False, 
-            on_epoch=True, 
+            on_step=True, 
+            on_epoch=False, 
             prog_bar=True,
             logger=True
         )
