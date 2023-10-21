@@ -22,7 +22,7 @@ class TrainDataset(Dataset):
         path_to_labels: str,
         win_length: int,
         win_overlap: int, 
-        num_recordings: int,
+        num_recordings: Optional[int] = None,
         num_movies: Optional[int] = 15,
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
@@ -31,7 +31,10 @@ class TrainDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
     ):
     
-        self.N_recordings = num_recordings
+        if num_recordings:
+            self.N_recordings = num_recordings
+        else:
+            self.N_recordings = len(os.listdir(path_to_data_dir))
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
@@ -101,7 +104,7 @@ class ValidationDataset(Dataset):
         path_to_labels: str,
         win_length: int,
         win_overlap: int, 
-        num_recordings: int,
+        num_recordings: Optional[int] = None,
         num_movies: Optional[int] = 15,
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
@@ -109,7 +112,10 @@ class ValidationDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
     ):
 
-        self.N_recordings = num_recordings
+        if num_recordings:
+            self.N_recordings = num_recordings
+        else:
+            self.N_recordings = len(os.listdir(path_to_data_dir))
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
@@ -176,7 +182,7 @@ class TestDataset(Dataset):
         path_to_labels: str,
         win_length: int,
         win_overlap: int, 
-        num_recordings: int,
+        num_recordings: Optional[int] = None,
         num_movies: Optional[int] = 15,
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
@@ -184,7 +190,10 @@ class TestDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
     ):
 
-        self.N_recordings = num_recordings
+        if num_recordings:
+            self.N_recordings = num_recordings
+        else:
+            self.N_recordings = len(os.listdir(path_to_data_dir))
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
