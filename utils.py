@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+from scipy.signal import butter, filtfilt
 from typing import List, Optional, Tuple
 
 """
@@ -15,12 +16,13 @@ Legend for tensors dimensions:
 
 #--------------------------------------------------------------------------
 def load_eeg_data_file(
-    path_to_file: str
+    path_to_file: str,
+    num_keys: Optional[int] = 15
 ) -> torch.Tensor:
     raw = loadmat(path_to_file)
     pattern = list(raw.keys())[4].split("_")[0]
     data = []
-    for i in range(15):
+    for i in range(num_keys):
         data.append(torch.tensor(raw[f"{pattern}_eeg{i + 1}"]))
     return data
 #--------------------------------------------------------------------------
@@ -66,4 +68,38 @@ def plot_eeg_data(
 ) -> None:
     
     return 
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+def set_butter_filter(
+        lowcut: int, 
+        highcut: int, 
+        fs: int, 
+        order: Optional[int] = 5
+    ):
+    nyq = 0.5 * fs
+    low = lowcut / nyq
+    high = highcut / nyq
+    b, a = butter(order, [low, high], btype='band')
+    return b, a
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+def bandpower_diff_entropy(
+        data: torch.Tensor, 
+        sampling_freq: int, 
+        freq_band: Tuple[int, int],
+        filter_order: Optional[int] = 5
+):
+    b, a = set_butter_filter(
+        lowcut=freq_band[0], 
+        highcut=freq_band[1], 
+        fs=sampling_freq, 
+        order=filter_order
+    )
+    filt_data = filtfilt(b, a, data, axis=1)
+    std_devs = np.std(filt_data, axis=1)
+    out_data = 1/2 * np.log(2 * np.pi * np.e * std_devs**2)
+    out_data = torch.tensor(out_data, dtype=torch.float32)
+    return out_data
 #--------------------------------------------------------------------------
