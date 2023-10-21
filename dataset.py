@@ -65,20 +65,27 @@ class TrainDataset(Dataset):
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
         
         # Boolean: if true apply transformation for data augmentation
         self.data_augmentation = data_augmentation
 
         # Preprocessing: apply Differential Entropy on single channels
         if preprocess_de:
-            print("-------------------------------------------------------")
-            # Stack eeg windows one over the other
+            # Stack eeg windows
             self.data = self.data.reshape(-1, self.win_length)
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
                 for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
             ])
+            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
+            self.data = self.data.swapaxes(0, 1)
+            self.data = self.data.reshape(self.N_samples, -1)
+
+            assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
     def __len__(self):
         return len(self.data)
@@ -146,23 +153,24 @@ class ValidationDataset(Dataset):
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
-        print(f"Data shape before: {self.data.shape}")
-        print(f"Labels shape before: {self.labels.shape}")
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
         # Preprocessing: apply Differential Entropy on single channels
         if preprocess_de:
-            print("-------------------------------------------------------")
-            # Stack eeg windows one over the other
+            # Stack eeg windows
             self.data = self.data.reshape(-1, self.win_length)
-            print(f"Data shape stacked: {self.data.shape}")
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
                 for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
             ])
-            print(f"Data shape mid through: {self.data.shape}")
-            self.data = self.data.reshape(-1, self.N_channels * len(self.band_freqs))
-            print(f"Data shape after: {self.data.shape}")
+            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
+            self.data = self.data.swapaxes(0, 1)
+            self.data = self.data.reshape(self.N_samples, -1)
+
+            assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
     def __len__(self):
         return len(self.data)
@@ -224,17 +232,24 @@ class TestDataset(Dataset):
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
         # Preprocessing: apply Differential Entropy on single channels
         if preprocess_de:
-            print("-------------------------------------------------------")
-            # Stack eeg windows one over the other
+            # Stack eeg windows
             self.data = self.data.reshape(-1, self.win_length)
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
                 for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
             ])
+            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
+            self.data = self.data.swapaxes(0, 1)
+            self.data = self.data.reshape(self.N_samples, -1)
+
+            assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
     def __len__(self):
         return len(self.data)
