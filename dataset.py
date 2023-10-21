@@ -47,7 +47,7 @@ class TrainDataset(Dataset):
         labels_unique = labels_dict["label"].squeeze(0)
         data = []
         labels = []
-        for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
+        for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
             curr_data = load_eeg_data_file(
                 path_to_file=os.path.join(path_to_data_dir, eeg_file),
                 num_keys=self.N_movies,
@@ -206,7 +206,7 @@ class TestDataset(Dataset):
         labels_unique = labels_dict["label"].squeeze(0)
         data = []
         labels = []
-        for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
+        for eeg_file in tqdm(eeg_files, desc="Loading test data files"):
             curr_data = load_eeg_data_file(
                 path_to_file=os.path.join(path_to_data_dir, eeg_file),
                 num_keys=self.N_movies,
