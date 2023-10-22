@@ -252,50 +252,54 @@ class EEGNet(pl.LightningModule):
 #----------------------------------------------------------------------------------------------------------------
 
 #----------------------------------------------------------------------------------------------------------------
-class EEGFFNet(pl.LightningModule):
+class EEGFeedForwardNetModel(pl.LightningModule):
     def __init__(
             self,
             input_size: Optional[int] = 248,
             num_classes: Optional[int] = 3,
-            hidden_size: Optional[int] = 128,
+            hidden_size: Optional[int] = 64,
             norm_method: Optional[Literal["batch", "stratified"]] = "batch",
             dropout_prob: Optional[float] = 0.5, 
-            
-
     ):
         super().__init__()
 
-        assert norm_method in ["batch", "stratified"], f"\
+        self.input_size = input_size
+        self.num_classes = num_classes
+        self.hidden_size = hidden_size
+        self.norm_method = norm_method
+        self.dropout_prob = dropout_prob
+
+        assert self.norm_method in ["batch", "stratified"], f"\
             The chosen normalization method {norm_method} is not available. Please choose one from ['batch', 'stratified']."
-        if norm_method == "batch":
+        if self.norm_method == "batch":
             self.norm_layer = nn.BatchNorm1d
-        elif norm_method == "stratified":
+        elif self.norm_method == "stratified":
             NotImplementedError
             # self.norm_layer = StratifiedNorm
 
-        self.input_norm = self.norm_layer(input_size)
+        self.input_norm = self.norm_layer(self.input_size)
 
         self.fc1 = nn.Sequential(
-            nn.Linear(in_features=input_size, out_features=hidden_size),
-            self.norm_layer(num_features=hidden_size),
+            nn.Linear(in_features=self.input_size, out_features=self.hidden_size),
+            self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
-        self.drop1 = nn.Dropout(0.25)
+        self.drop1 = nn.Dropout(self.dropout_prob)
         self.fc2 = nn.Sequential(
-            nn.Linear(in_features=hidden_size, out_features=hidden_size // 2),
-            self.norm_layer(num_features=hidden_size),
+            nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size // 2),
+            self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
-        self.drop2 = nn.Dropout(0.25)
+        self.drop2 = nn.Dropout(self.dropout_prob)
         self.fc3 = nn.Sequential(
-            nn.Linear(in_features=input_size // 2, out_features=hidden_size // 2),
-            self.norm_layer(num_features=hidden_size),
+            nn.Linear(in_features=self.hidden_size // 2, out_features=self.hidden_size // 2),
+            self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
-        self.drop3 = nn.Dropout(0.25)
+        self.drop3 = nn.Dropout(self.dropout_prob)
         self.fc4 = nn.Sequential(
-            nn.Linear(in_features=hidden_size // 2, out_features=num_classes),
-            self.norm_layer(num_features=hidden_size),
+            nn.Linear(in_features=self.hidden_size // 2, out_features=self.num_classes),
+            self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
 
@@ -309,3 +313,149 @@ class EEGFFNet(pl.LightningModule):
         x = self.drop3(x)
         x = self.fc4(x)
         return x
+#-------------------------------------------------------------------------------------------------------    
+
+#-------------------------------------------------------------------------------------------------------
+class EEGFeedForwardNet(pl.LightningModule):
+    def __init__(
+            self, 
+            model_parameters: Dict,
+            lr: Optional[float] = 1e-4, 
+            betas: Optional[Iterable[float]] = [0.9, 0.99], 
+            weight_decay: Optional[float] = 1e-6, 
+            epochs: Optional[int] = 100, 
+        ):
+        super().__init__()
+
+        self.save_hyperparameters()
+        self.loss_fun = nn.CrossEntropyLoss()
+        self.model = EEGFeedForwardNetModel(**model_parameters)
+        self.lr = lr
+        self.betas = betas
+        self.weight_decay = weight_decay
+        self.epochs = epochs
+
+    def forward(
+            self, 
+            input: Tuple[torch.Tensor, int]
+        ):
+        '''
+        Parameters:
+        -----------
+            input: Tuple[torch.Tensor, int]
+                Tensor of size (B, 1, M, W), plus an integer label.
+
+        Returns:
+        --------
+            x: (torch.Tensor)
+                Tensor of size (B, 3, M)
+        '''
+
+        x, y = input
+        x = self.model(x)
+        return x
+    
+
+    def training_step(
+            self, 
+            train_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            train_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = train_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        # compute loss & log it
+        loss = self.loss_fun(out, y)
+        
+        # compute metrics & log them
+        accuracy = multiclass_accuracy(input=out, target=y)
+        f1_score = multiclass_f1_score(input=out, target=y, num_classes=out.shape[-1]) 
+
+        # log loss and metrics
+        self.log_dict(
+            {'train_loss': loss, "train_accuracy": accuracy, "train_f1_score": f1_score},
+            on_step=True, 
+            on_epoch=False, 
+            prog_bar=True,
+            logger=True
+        )
+        
+        return loss
+    
+
+    def validation_step(
+            self, 
+            val_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            val_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = val_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        # compute loss
+        loss = self.loss_fun(out, y)
+
+        # compute metrics & log them
+        accuracy = multiclass_accuracy(input=out, target=y)
+        f1_score = multiclass_f1_score(input=out, target=y, num_classes=out.shape[-1]) 
+
+        # log loss and metrics
+        self.log_dict(
+            {"val_loss": loss, "val_accuracy": accuracy, "val_f1_score": f1_score},
+            on_step=False, 
+            on_epoch=True, 
+            prog_bar=True,
+            logger=True
+        )
+
+        return loss
+    
+    def test_step(
+            self, 
+            test_batch: Tuple[torch.Tensor, torch.Tensor], 
+            batch_idx: int
+        ):
+        '''
+        Parameters:
+        -----------
+            test_batch: (Tuple[torch.Tensor, torch.Tensor])
+                Tensor of size (B, 1, M, W) (the EEG signal) and tensor of size (B) (the labels).
+        '''
+
+        # extract input (x signal, y label)
+        x, y = test_batch 
+        
+        # network output
+        out = self.model(x)
+        
+        return self.loss_fun(out, y)
+    
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(
+            self.parameters(), lr=self.lr, betas=self.betas, weight_decay=self.weight_decay
+        )
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer=optimizer, mode='min', factor=0.5, patience=25, min_lr=1e-7
+        )
+        return [optimizer], [{"scheduler": scheduler,"monitor": "val_loss", "interval": "epoch", "frequency": 1}]
+#----------------------------------------------------------------------------------------------------------------
