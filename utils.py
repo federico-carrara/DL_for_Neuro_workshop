@@ -4,7 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
 from scipy.signal import butter, filtfilt
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 
 """
 Legend for tensors dimensions:
@@ -103,3 +103,82 @@ def bandpower_diff_entropy(
     out_data = torch.tensor(out_data, dtype=torch.float32)
     return out_data
 #--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+def format_channel_location_dict(channel_list, location_list):
+    location_list = np.array(location_list)
+    output = {}
+    for channel in channel_list:
+        if len(np.argwhere(location_list == channel)):
+            location = (np.argwhere(location_list == channel)[0]).tolist()
+            output[channel] = location
+        else:
+            output[channel] = None
+    return output
+#--------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------
+class ToGrid:
+    def __init__(
+            self,
+            channel_name_list: List[str],
+            channel_location_list: List[List[str]],
+    ):
+        self.channel_location_dict = format_channel_location_dict(
+            channel_list=channel_name_list,
+            location_list=channel_location_list
+        )
+        self.num_channels = len(channel_name_list)
+
+        loc_x_list = []
+        loc_y_list = []
+        for locs in self.channel_location_dict.values():
+            if locs is None:
+                continue
+            (loc_y, loc_x) = locs
+            loc_x_list.append(loc_x)
+            loc_y_list.append(loc_y)
+
+        self.width = max(loc_x_list) + 1
+        self.height = max(loc_y_list) + 1
+
+    def apply(
+            self, 
+            input: np.ndarray,
+            num_features: int
+    ) -> np.ndarray:
+        
+        # input shape: (num_features, num_channels, )
+        assert input.shape[0] == num_features, f"\
+            Found {input.shape[0]} features, whereas we expected {num_features}."
+
+        # output shape: (num_features, height, width, ) 
+        outputs = np.zeros([num_features, self.height, self.width])
+        for i, locs in enumerate(self.channel_location_dict.values()):
+            if locs is None:
+                continue
+            (loc_y, loc_x) = locs
+            outputs[:, loc_y, loc_x] = input[:, i]
+
+        return outputs
+
+    # def reverse(self, eeg: np.ndarray, **kwargs) -> np.ndarray:
+    #     r'''
+    #     The inverse operation of the converter is used to take out the electrodes on the grid and arrange them in the original order.
+    #     Args:
+    #         eeg (np.ndarray): The input EEG signals in shape of [number of data points, width of grid, height of grid].
+
+    #     Returns:
+    #         np.ndarray: The revered results with the shape of [number of electrodes, number of data points].
+    #     '''
+    #     # timestep x 9 x 9
+    #     eeg = eeg.transpose(1, 2, 0)
+    #     # 9 x 9 x timestep
+    #     num_electrodes = len(self.channel_location_dict)
+    #     outputs = np.zeros([num_electrodes, eeg.shape[2]])
+    #     for i, (x, y) in enumerate(self.channel_location_dict.values()):
+    #         outputs[i] = eeg[x][y]
+    #     # num_electrodes x timestep
+    #     return {
+    #         'eeg': outputs
+    #     }
