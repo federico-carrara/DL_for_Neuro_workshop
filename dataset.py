@@ -49,7 +49,6 @@ class TrainDataset(Dataset):
         num_movies: Optional[int] = 15,
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
-        data_augmentation: Optional[bool] = True,
         preprocess_de: Optional[bool] = False,
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
@@ -119,7 +118,7 @@ class TrainDataset(Dataset):
         
             # Set proper data type
             self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type()
+            self.labels = self.labels.type(torch.int64)
             self.trial_ids = self.trial_ids.type(torch.int64)
             self.N_samples = self.data.shape[0]
 
@@ -291,7 +290,7 @@ class ValidationDataset(Dataset):
             self.trial_ids = torch.concat(trial_ids)
             # Set proper data type
             self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type()
+            self.labels = self.labels.type(torch.int64)
             self.trial_ids = self.trial_ids.type(torch.int64)
             self.N_samples = self.data.shape[0]
 
@@ -457,7 +456,7 @@ class TestDataset(Dataset):
 
                     # Set proper data type
             self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type()
+            self.labels = self.labels.type(torch.int64)
             self.trial_ids = self.trial_ids.type(torch.int64)
             self.N_samples = self.data.shape[0]
 
