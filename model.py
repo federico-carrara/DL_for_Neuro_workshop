@@ -322,7 +322,8 @@ class EEGFeedForwardNet(pl.LightningModule):
             lr: Optional[float] = 1e-4, 
             betas: Optional[Iterable[float]] = [0.9, 0.99], 
             weight_decay: Optional[float] = 1e-6, 
-            epochs: Optional[int] = 100, 
+            epochs: Optional[int] = 100,
+            lr_patience: Optional[int] = 20,  
         ):
         super().__init__()
 
@@ -333,6 +334,7 @@ class EEGFeedForwardNet(pl.LightningModule):
         self.betas = betas
         self.weight_decay = weight_decay
         self.epochs = epochs
+        self.lr_patience = lr_patience
 
     def forward(
             self, 
@@ -454,7 +456,11 @@ class EEGFeedForwardNet(pl.LightningModule):
             self.parameters(), lr=self.lr, betas=self.betas, weight_decay=self.weight_decay
         )
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer=optimizer, mode='min', factor=0.5, patience=25, min_lr=1e-7
+            optimizer=optimizer, 
+            mode='min', 
+            factor=0.1, 
+            patience=self.lr_patience, 
+            min_lr=1e-7
         )
         return [optimizer], [{"scheduler": scheduler,"monitor": "val_loss", "interval": "epoch", "frequency": 1}]
 #----------------------------------------------------------------------------------------------------------------
