@@ -61,6 +61,7 @@ class TrainDataset(Dataset):
         if not preprocess_de and map_to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
             
+        # Global parameters
         if num_recordings:
             self.N_recordings = num_recordings
         else:
@@ -68,8 +69,13 @@ class TrainDataset(Dataset):
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
+        # Windows parameters
         self.win_length = win_length
         self.win_overlap = win_overlap
+        # Differential entropy parameters
+        self.preprocess_de = preprocess_de
+        self.band_frequencies = band_frequencies
+        # Other parameters
         self.normalization = normalization
         self.map_to_grid = map_to_grid
 
@@ -117,36 +123,67 @@ class TrainDataset(Dataset):
         self.data_augmentation = data_augmentation
 
         # Preprocessing: apply Differential Entropy on single channels
-        if preprocess_de:
-            # Stack eeg windows
-            self.data = self.data.reshape(-1, self.win_length)
-            self.band_freqs = band_frequencies
-            self.data = torch.stack([
-                bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
-            ])
-            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
-            self.data = self.data.swapaxes(0, 1)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
 
-            if self.normalization == "all": # normalize across all instances
-                mean_tensor = torch.mean(self.data, dim=0)
-                std_tensor = torch.std(self.data, dim=0)
-                self.data = (self.data - mean_tensor) / std_tensor
-            elif self.normalization == "trial": # normalize data for each trial
-                for trial_id in trials_ids_unique:
-                    mask = torch.argwhere(self.trial_ids == trial_id) 
-                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
-                    std_tensor = torch.std(self.data[mask, ...], dim=0)
-                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
-
+            # If required, map data to a 2D grid made by electrodes positions
             if self.map_to_grid:
-                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
-                self.data = mapper.apply(self.data)
+                self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+    
+    
+    def map_to_grid(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+        self.data = mapper.apply(self.data)
 
+        return self.data
+    
+    
+    def normalize_data(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+        elif self.normalization == "trial": # normalize data for each trial
+            for trial_id in self.trials_ids_unique:
+                mask = torch.argwhere(self.trial_ids == trial_id) 
+                mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                std_tensor = torch.std(self.data[mask, ...], dim=0)
+                self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
+        return self.data
+    
+    
+    def compute_Diff_Entropy(self):
+        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        
+        # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
+        # Stack eeg windows -- > input: (N, C, W)
+        self.data = self.data.reshape(-1, self.win_length) # (N * C, W) 
+        self.data = torch.stack([
+            bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
+            for band_freq in tqdm(self.band_frequencies, desc="Computing DE on band")
+        ]) # (N * C, F)
+        self.data = self.data.reshape(-1, self.N_samples, self.N_channels) # (F, N, C)
+        self.data = self.data.swapaxes(0, 1) # (N, F, C)
+
+        return self.data 
+    
     def __len__(self):
         return len(self.data)
 
@@ -238,36 +275,66 @@ class ValidationDataset(Dataset):
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
         # Preprocessing: apply Differential Entropy on single channels
-        if preprocess_de:
-            # Stack eeg windows
-            self.data = self.data.reshape(-1, self.win_length)
-            self.band_freqs = band_frequencies
-            self.data = torch.stack([
-                bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
-            ])
-            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
-            self.data = self.data.swapaxes(0, 1)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
 
-            if self.normalization == "all": # normalize across all instances
-                mean_tensor = torch.mean(self.data, dim=0)
-                std_tensor = torch.std(self.data, dim=0)
-                self.data = (self.data - mean_tensor) / std_tensor
-            elif self.normalization == "trial": # normalize data for each trial
-                for trial_id in trials_ids_unique:
-                    mask = torch.argwhere(self.trial_ids == trial_id) 
-                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
-                    std_tensor = torch.std(self.data[mask, ...], dim=0)
-                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
-
-            if map_to_grid:
-                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
-                self.data = mapper.apply(self.data)
+            # If required, map data to a 2D grid made by electrodes positions
+            if self.map_to_grid:
+                self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+    
+    def map_to_grid(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+        self.data = mapper.apply(self.data)
 
+        return self.data
+    
+    
+    def normalize_data(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+        elif self.normalization == "trial": # normalize data for each trial
+            for trial_id in self.trials_ids_unique:
+                mask = torch.argwhere(self.trial_ids == trial_id) 
+                mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                std_tensor = torch.std(self.data[mask, ...], dim=0)
+                self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
+        return self.data
+    
+    
+    def compute_Diff_Entropy(self):
+        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        
+        # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
+        # Stack eeg windows -- > input: (N, C, W)
+        self.data = self.data.reshape(-1, self.win_length) # (N * C, W) 
+        self.data = torch.stack([
+            bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
+            for band_freq in tqdm(self.band_frequencies, desc="Computing DE on band")
+        ]) # (N * C, F)
+        self.data = self.data.reshape(-1, self.N_samples, self.N_channels) # (F, N, C)
+        self.data = self.data.swapaxes(0, 1) # (N, F, C)
+
+        return self.data 
+    
     def __len__(self):
         return len(self.data)
 
@@ -355,35 +422,66 @@ class TestDataset(Dataset):
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
         # Preprocessing: apply Differential Entropy on single channels
-        if preprocess_de:
-            # Stack eeg windows
-            self.data = self.data.reshape(-1, self.win_length)
-            self.band_freqs = band_frequencies
-            self.data = torch.stack([
-                bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
-            ])
-            self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
-            self.data = self.data.swapaxes(0, 1)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
 
-            if self.normalization == "all": # normalize across all instances
-                mean_tensor = torch.mean(self.data, dim=0)
-                std_tensor = torch.std(self.data, dim=0)
-                self.data = (self.data - mean_tensor) / std_tensor
-            elif self.normalization == "trial": # normalize data for each trial
-                for trial_id in trials_ids_unique:
-                    mask = torch.argwhere(self.trial_ids == trial_id) 
-                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
-                    std_tensor = torch.std(self.data[mask, ...], dim=0)
-                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
-
-            if map_to_grid:
-                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
-                self.data = mapper.apply(self.data)
+            # If required, map data to a 2D grid made by electrodes positions
+            if self.map_to_grid:
+                self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+    
+    def map_to_grid(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+        self.data = mapper.apply(self.data)
+
+        return self.data
+    
+    
+    def normalize_data(self):
+        assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+        
+        if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+        elif self.normalization == "trial": # normalize data for each trial
+            for trial_id in self.trials_ids_unique:
+                mask = torch.argwhere(self.trial_ids == trial_id) 
+                mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                std_tensor = torch.std(self.data[mask, ...], dim=0)
+                self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
+        return self.data
+    
+    
+    def compute_Diff_Entropy(self):
+        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
+The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        
+        # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
+        # Stack eeg windows -- > input: (N, C, W)
+        self.data = self.data.reshape(-1, self.win_length) # (N * C, W) 
+        self.data = torch.stack([
+            bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
+            for band_freq in tqdm(self.band_frequencies, desc="Computing DE on band")
+        ]) # (N * C, F)
+        self.data = self.data.reshape(-1, self.N_samples, self.N_channels) # (F, N, C)
+        self.data = self.data.swapaxes(0, 1) # (N, F, C)
+
+        return self.data 
+    
 
     def __len__(self):
         return len(self.data)
