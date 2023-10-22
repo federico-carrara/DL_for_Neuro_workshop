@@ -2,6 +2,7 @@ import os
 import string
 import torch
 import h5py
+import warnings
 from scipy.io import loadmat
 from random import random
 from tqdm import tqdm
@@ -10,9 +11,9 @@ from typing import Optional, List, Tuple
 from utils import (
     load_eeg_data_file, 
     windowize_signal, 
-    shuffle_channels, 
     add_gaussian_noise,
-    bandpower_diff_entropy
+    bandpower_diff_entropy,
+    ToGrid, 
 )
 
 SEED_LOCATION_LIST = [
@@ -49,12 +50,16 @@ class TrainDataset(Dataset):
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
         data_augmentation: Optional[bool] = True,
-        preprocess_de: Optional[bool] = True,
+        preprocess_de: Optional[bool] = False,
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
+        map_to_grid: Optional[bool] = False,
     ):
-    
+        
+        if not preprocess_de and map_to_grid:
+            warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
+            
         if num_recordings:
             self.N_recordings = num_recordings
         else:
@@ -117,7 +122,11 @@ class TrainDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
-            self.data = self.data.reshape(self.N_samples, -1)
+            if map_to_grid:
+                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+                self.data = mapper.apply(self.data)
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
@@ -150,8 +159,12 @@ class ValidationDataset(Dataset):
         preprocess_de: Optional[bool] = True,
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
-        ] 
+        ],
+        map_to_grid: Optional[bool] = False,
     ):
+        
+        if not preprocess_de and map_to_grid:
+            warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
         if num_recordings:
             self.N_recordings = num_recordings
@@ -202,7 +215,11 @@ class ValidationDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
-            self.data = self.data.reshape(self.N_samples, -1)
+            if map_to_grid:
+                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+                self.data = mapper.apply(self.data)
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
@@ -231,8 +248,12 @@ class TestDataset(Dataset):
         preprocess_de: Optional[bool] = True,
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
-        ]
+        ],
+        map_to_grid: Optional[bool] = False,
     ):
+
+        if not preprocess_de and map_to_grid:
+            warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
         if num_recordings:
             self.N_recordings = num_recordings
@@ -283,7 +304,11 @@ class TestDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
-            self.data = self.data.reshape(self.N_samples, -1)
+            if map_to_grid:
+                mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
+                self.data = mapper.apply(self.data)
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
