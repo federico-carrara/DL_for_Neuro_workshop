@@ -286,24 +286,23 @@ class EEGFeedForwardNetModel(pl.LightningModule):
         )
         self.drop1 = nn.Dropout(self.dropout_prob)
         self.fc2 = nn.Sequential(
-            nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size // 2),
+            nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size),
             self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
         self.drop2 = nn.Dropout(self.dropout_prob)
         self.fc3 = nn.Sequential(
-            nn.Linear(in_features=self.hidden_size // 2, out_features=self.hidden_size // 2),
+            nn.Linear(in_features=self.hidden_size, out_features=self.hidden_size),
             self.norm_layer(num_features=self.hidden_size),
             nn.ReLU(True)
         )
         self.drop3 = nn.Dropout(self.dropout_prob)
         self.fc4 = nn.Sequential(
-            nn.Linear(in_features=self.hidden_size // 2, out_features=self.num_classes),
-            self.norm_layer(num_features=self.hidden_size),
+            nn.Linear(in_features=self.hidden_size, out_features=self.num_classes),
             nn.ReLU(True)
         )
 
-    def forward(self, x, i):
+    def forward(self, x):
         x = self.input_norm(x)
         x = self.fc1(x)
         x = self.drop1(x)
