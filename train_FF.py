@@ -27,7 +27,9 @@ train_dataset = TrainDataset(
     win_length=window_length, 
     win_overlap=window_overlap, 
     data_augmentation=False,
-    preprocess_de=True
+    preprocess_de=True,
+    normalization="trial",
+    map_to_grid=False
 )
 print("------------------------------------------------------------")
 val_dataset = ValidationDataset(
@@ -35,7 +37,8 @@ val_dataset = ValidationDataset(
     path_to_labels="../data/label.mat", 
     win_length=window_length, 
     win_overlap=window_overlap,
-    preprocess_de=True 
+    preprocess_de=True, 
+    normalization="trial"
 )
 print("------------------------------------------------------------")
 test_dataset = TestDataset(
@@ -43,9 +46,12 @@ test_dataset = TestDataset(
     path_to_labels="../data/label.mat", 
     win_length=window_length, 
     win_overlap=window_overlap,
-    preprocess_de=True
+    preprocess_de=True,
+    normalization="trial",
+    map_to_grid=False
 )
 print("------------------------------------------------------------")
+
 train_dataloader = DataLoader(train_dataset, batch_size=batch_sz, shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=batch_sz, shuffle=False)
 test_dataloader = DataLoader(test_dataset, batch_size=batch_sz, shuffle=False)
