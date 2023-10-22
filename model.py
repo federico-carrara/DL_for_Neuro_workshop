@@ -586,7 +586,7 @@ class CCNN(pl.LightningModule):
 
         self.save_hyperparameters()
         self.loss_fun = nn.CrossEntropyLoss()
-        self.model = EEGFeedForwardNetModel(**model_parameters)
+        self.model = CCNNModel(**model_parameters)
         self.lr = lr
         self.betas = betas
         self.weight_decay = weight_decay
