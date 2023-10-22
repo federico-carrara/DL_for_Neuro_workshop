@@ -9,7 +9,7 @@ from torcheval.metrics.functional import (
     multiclass_f1_score
 )
 from torch import optim
-from typing import Tuple, Optional, Dict, Iterable
+from typing import Tuple, Optional, Dict, Iterable, Literal
 
 #--------------------------------------------------------------------------
 class EEGNetModel(pl.LightningModule):
@@ -249,3 +249,63 @@ class EEGNet(pl.LightningModule):
             optimizer=optimizer, mode='min', factor=0.5, patience=15, min_lr=1e-7
         )
         return [optimizer], [{"scheduler": scheduler,"monitor": "val_loss", "interval": "epoch", "frequency": 1}]
+#----------------------------------------------------------------------------------------------------------------
+
+#----------------------------------------------------------------------------------------------------------------
+class EEGFFNet(pl.LightningModule):
+    def __init__(
+            self,
+            input_size: Optional[int] = 248,
+            num_classes: Optional[int] = 3,
+            hidden_size: Optional[int] = 128,
+            norm_method: Optional[Literal["batch", "stratified"]] = "batch",
+            dropout_prob: Optional[float] = 0.5, 
+            
+
+    ):
+        super().__init__()
+
+        assert norm_method in ["batch", "stratified"], f"\
+            The chosen normalization method {norm_method} is not available. Please choose one from ['batch', 'stratified']."
+        if norm_method == "batch":
+            self.norm_layer = nn.BatchNorm1d
+        elif norm_method == "stratified":
+            NotImplementedError
+            # self.norm_layer = StratifiedNorm
+
+        self.input_norm = self.norm_layer(input_size)
+
+        self.fc1 = nn.Sequential(
+            nn.Linear(in_features=input_size, out_features=hidden_size),
+            self.norm_layer(num_features=hidden_size),
+            nn.ReLU(True)
+        )
+        self.drop1 = nn.Dropout(0.25)
+        self.fc2 = nn.Sequential(
+            nn.Linear(in_features=hidden_size, out_features=hidden_size // 2),
+            self.norm_layer(num_features=hidden_size),
+            nn.ReLU(True)
+        )
+        self.drop2 = nn.Dropout(0.25)
+        self.fc3 = nn.Sequential(
+            nn.Linear(in_features=input_size // 2, out_features=hidden_size // 2),
+            self.norm_layer(num_features=hidden_size),
+            nn.ReLU(True)
+        )
+        self.drop3 = nn.Dropout(0.25)
+        self.fc4 = nn.Sequential(
+            nn.Linear(in_features=hidden_size // 2, out_features=num_classes),
+            self.norm_layer(num_features=hidden_size),
+            nn.ReLU(True)
+        )
+
+    def forward(self, x, i):
+        x = self.input_norm(x)
+        x = self.fc1(x)
+        x = self.drop1(x)
+        x = self.fc2(x)
+        x = self.drop2(x)
+        x = self.fc3(x)
+        x = self.drop3(x)
+        x = self.fc4(x)
+        return x
