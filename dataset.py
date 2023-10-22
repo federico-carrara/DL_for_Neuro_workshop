@@ -110,11 +110,13 @@ class TrainDataset(Dataset):
         
         data = [tens.unsqueeze(0) for tens in data]
         self.data = torch.concat(data, axis=0).unsqueeze(1)
-        self.data = self.data.type(torch.float32)
         self.labels = torch.concat(labels)
         self.labels += 1
-        self.labels = self.labels.type(torch.int64)
         self.trial_ids = torch.concat(trial_ids)
+
+        # Set proper data type
+        self.data = self.data.type(torch.float32)
+        self.labels = self.labels.type(torch.int64)
         self.trial_ids = self.trial_ids.type(torch.int64)
         self.N_samples = self.data.shape[0]
 
@@ -276,6 +278,7 @@ class ValidationDataset(Dataset):
         self.labels += 1
         self.trial_ids = torch.concat(trial_ids)
 
+        # Set proper data type
         self.data = self.data.type(torch.float32)
         self.labels = self.labels.type(torch.int64)
         self.trial_ids = self.trial_ids.type(torch.int64)
@@ -427,11 +430,13 @@ class TestDataset(Dataset):
 
         data = [tens.unsqueeze(0) for tens in data]
         self.data = torch.concat(data, axis=0).unsqueeze(1)
-        self.data = self.data.type(torch.float32)
         self.labels = torch.concat(labels)
         self.labels += 1
-        self.labels = self.labels.type(torch.int64)
         self.trial_ids = torch.concat(trial_ids)
+
+        # Set proper data type
+        self.data = self.data.type(torch.float32)
+        self.labels = self.labels.type(torch.int64)
         self.trial_ids = self.trial_ids.type(torch.int64)
         self.N_samples = self.data.shape[0]
 
