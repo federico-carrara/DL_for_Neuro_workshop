@@ -7,7 +7,7 @@ from scipy.io import loadmat
 from random import random
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Literal
 from utils import (
     load_eeg_data_file, 
     windowize_signal, 
@@ -54,6 +54,7 @@ class TrainDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
+        normalization: Optional[Literal["all", "trial"]] = "trial",
         map_to_grid: Optional[bool] = False,
     ):
         
@@ -69,6 +70,8 @@ class TrainDataset(Dataset):
         self.sampl_freq = sampling_frequency
         self.win_length = win_length
         self.win_overlap = win_overlap
+        self.normalization = normalization
+        self.map_to_grid = map_to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -77,6 +80,7 @@ class TrainDataset(Dataset):
         data = []
         labels = []
         trial_ids = []
+        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
         trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
             #Data
@@ -104,6 +108,7 @@ class TrainDataset(Dataset):
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
         self.trial_ids = torch.concat(trial_ids)
+        self.trial_ids = self.trial_ids.type(torch.int64)
         self.N_samples = self.data.shape[0]
 
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
@@ -122,7 +127,19 @@ class TrainDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
-            if map_to_grid:
+
+            if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+            elif self.normalization == "trial": # normalize data for each trial
+                for trial_id in trials_ids_unique:
+                    mask = torch.argwhere(self.trial_ids == trial_id) 
+                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                    std_tensor = torch.std(self.data[mask, ...], dim=0)
+                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
+            if self.map_to_grid:
                 mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
                 self.data = mapper.apply(self.data)
             else:
@@ -136,12 +153,13 @@ class TrainDataset(Dataset):
     def __getitem__(self, index):
         sample = self.data[index]
         label = self.labels[index]
+        trial_id = self.trial_ids[index]
 
         if self.data_augmentation:
             if random() > 0.2:
                 sample = add_gaussian_noise(sample)
 
-        return sample, label
+        return sample, label, trial_id
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
@@ -160,6 +178,7 @@ class ValidationDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
+        normalization: Optional[Literal["all", "trial"]] = "trial",
         map_to_grid: Optional[bool] = False,
     ):
         
@@ -175,6 +194,8 @@ class ValidationDataset(Dataset):
         self.sampl_freq = sampling_frequency
         self.win_length = win_length
         self.win_overlap = win_overlap
+        self.normalization = normalization
+        self.map_to_grid = map_to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -182,24 +203,36 @@ class ValidationDataset(Dataset):
         labels_unique = labels_dict["label"].squeeze(0)
         data = []
         labels = []
+        trial_ids = []
+        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
+        trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
+            #Data
             curr_data = load_eeg_data_file(
                 path_to_file=os.path.join(path_to_data_dir, eeg_file),
                 num_keys=self.N_movies,
             )
             curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
             data.extend(curr_windowized_data)
+            #Labels    
             curr_labels = [
                 torch.tensor([labels_unique[i]] * num_windows[i])
                 for i in range(len(curr_data))
             ]
-            labels.append(torch.concat(curr_labels, axis=0))
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+
         data = [tens.unsqueeze(0) for tens in data]
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
+        self.trial_ids = torch.concat(trial_ids)
+        self.trial_ids = self.trial_ids.type(torch.int64)
         self.N_samples = self.data.shape[0]
 
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
@@ -215,6 +248,18 @@ class ValidationDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
+
+            if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+            elif self.normalization == "trial": # normalize data for each trial
+                for trial_id in trials_ids_unique:
+                    mask = torch.argwhere(self.trial_ids == trial_id) 
+                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                    std_tensor = torch.std(self.data[mask, ...], dim=0)
+                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
             if map_to_grid:
                 mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
                 self.data = mapper.apply(self.data)
@@ -229,8 +274,9 @@ class ValidationDataset(Dataset):
     def __getitem__(self, index):
         sample = self.data[index]
         label = self.labels[index]
+        trial_id = self.trial_ids[index]
 
-        return sample, label
+        return sample, label, trial_id
 #--------------------------------------------------------------------------
 
 #--------------------------------------------------------------------------
@@ -249,6 +295,7 @@ class TestDataset(Dataset):
         band_frequencies: Optional[List[Tuple[int, int]]] = [
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
+        normalization: Optional[Literal["all", "trial"]] = "trial",
         map_to_grid: Optional[bool] = False,
     ):
 
@@ -264,6 +311,8 @@ class TestDataset(Dataset):
         self.sampl_freq = sampling_frequency
         self.win_length = win_length
         self.win_overlap = win_overlap
+        self.normalization = normalization
+        self.map_to_grid = map_to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -271,24 +320,36 @@ class TestDataset(Dataset):
         labels_unique = labels_dict["label"].squeeze(0)
         data = []
         labels = []
+        trial_ids = []
+        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
+        trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading test data files"):
+            #Data
             curr_data = load_eeg_data_file(
                 path_to_file=os.path.join(path_to_data_dir, eeg_file),
                 num_keys=self.N_movies,
             )
             curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
             data.extend(curr_windowized_data)
+            #Labels    
             curr_labels = [
                 torch.tensor([labels_unique[i]] * num_windows[i])
                 for i in range(len(curr_data))
             ]
-            labels.append(torch.concat(curr_labels, axis=0))
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+
         data = [tens.unsqueeze(0) for tens in data]
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
+        self.trial_ids = torch.concat(trial_ids)
+        self.trial_ids = self.trial_ids.type(torch.int64)
         self.N_samples = self.data.shape[0]
 
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
@@ -304,6 +365,18 @@ class TestDataset(Dataset):
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
+
+            if self.normalization == "all": # normalize across all instances
+                mean_tensor = torch.mean(self.data, dim=0)
+                std_tensor = torch.std(self.data, dim=0)
+                self.data = (self.data - mean_tensor) / std_tensor
+            elif self.normalization == "trial": # normalize data for each trial
+                for trial_id in trials_ids_unique:
+                    mask = torch.argwhere(self.trial_ids == trial_id) 
+                    mean_tensor = torch.mean(self.data[mask, ...], dim=0)
+                    std_tensor = torch.std(self.data[mask, ...], dim=0)
+                    self.data[mask, ...] = (self.data[mask, ...] - mean_tensor) / std_tensor
+
             if map_to_grid:
                 mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
                 self.data = mapper.apply(self.data)
@@ -318,6 +391,7 @@ class TestDataset(Dataset):
     def __getitem__(self, index):
         sample = self.data[index]
         label = self.labels[index]
+        trial_id = self.trial_ids[index]
 
-        return sample, label
+        return sample, label, trial_id
 #--------------------------------------------------------------------------
