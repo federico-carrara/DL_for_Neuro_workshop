@@ -129,56 +129,24 @@ class ToGrid:
             location_list=channel_location_list
         )
         self.num_channels = len(channel_name_list)
-
-        loc_x_list = []
-        loc_y_list = []
-        for locs in self.channel_location_dict.values():
-            if locs is None:
-                continue
-            (loc_y, loc_x) = locs
-            loc_x_list.append(loc_x)
-            loc_y_list.append(loc_y)
-
-        self.width = max(loc_x_list) + 1
-        self.height = max(loc_y_list) + 1
+        self.width = len(channel_location_list[0]) 
+        self.height = len(channel_location_list)
 
     def apply(
             self, 
-            input: np.ndarray,
-            num_features: int
+            input: np.ndarray
     ) -> np.ndarray:
         
-        # input shape: (num_features, num_channels, )
-        assert input.shape[0] == num_features, f"\
-            Found {input.shape[0]} features, whereas we expected {num_features}."
+        # input shape: (num_records, num_features, num_channels, )
+        num_records = input.shape[0]
+        num_features = input.shape[1]
 
-        # output shape: (num_features, height, width, ) 
-        outputs = np.zeros([num_features, self.height, self.width])
+        # output shape: (num_records, num_features, height, width, ) 
+        outputs = np.zeros([num_records, num_features, self.height, self.width])
         for i, locs in enumerate(self.channel_location_dict.values()):
             if locs is None:
                 continue
             (loc_y, loc_x) = locs
-            outputs[:, loc_y, loc_x] = input[:, i]
+            outputs[:, :, loc_y, loc_x] = input[:, :, i]
 
         return outputs
-
-    # def reverse(self, eeg: np.ndarray, **kwargs) -> np.ndarray:
-    #     r'''
-    #     The inverse operation of the converter is used to take out the electrodes on the grid and arrange them in the original order.
-    #     Args:
-    #         eeg (np.ndarray): The input EEG signals in shape of [number of data points, width of grid, height of grid].
-
-    #     Returns:
-    #         np.ndarray: The revered results with the shape of [number of electrodes, number of data points].
-    #     '''
-    #     # timestep x 9 x 9
-    #     eeg = eeg.transpose(1, 2, 0)
-    #     # 9 x 9 x timestep
-    #     num_electrodes = len(self.channel_location_dict)
-    #     outputs = np.zeros([num_electrodes, eeg.shape[2]])
-    #     for i, (x, y) in enumerate(self.channel_location_dict.values()):
-    #         outputs[i] = eeg[x][y]
-    #     # num_electrodes x timestep
-    #     return {
-    #         'eeg': outputs
-    #     }
