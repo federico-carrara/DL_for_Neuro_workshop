@@ -69,12 +69,14 @@ class TrainDataset(Dataset):
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
+        self.trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
         # Windows parameters
         self.win_length = win_length
         self.win_overlap = win_overlap
         # Differential entropy parameters
         self.preprocess_de = preprocess_de
         self.band_frequencies = band_frequencies
+        self.N_bands = len(self.band_frequencies)
         # Other parameters
         self.normalization = normalization
         self.map_to_grid = map_to_grid
@@ -86,7 +88,6 @@ class TrainDataset(Dataset):
         data = []
         labels = []
         trial_ids = []
-        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
         trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
             #Data
@@ -142,7 +143,7 @@ class TrainDataset(Dataset):
     
     def map_to_grid(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
         self.data = mapper.apply(self.data)
@@ -152,7 +153,7 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     def normalize_data(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         if self.normalization == "all": # normalize across all instances
                 mean_tensor = torch.mean(self.data, dim=0)
@@ -169,8 +170,8 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     
     def compute_Diff_Entropy(self):
-        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        assert self.data.shape == (self.N_samples, 1, self.N_channels, self.win_length),  f"\
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, 1, self.N_channels, self.win_length)}"
         
         # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
         # Stack eeg windows -- > input: (N, C, W)
@@ -222,6 +223,7 @@ class ValidationDataset(Dataset):
         if not preprocess_de and map_to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
+        # Global parameters
         if num_recordings:
             self.N_recordings = num_recordings
         else:
@@ -229,8 +231,15 @@ class ValidationDataset(Dataset):
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
+        self.trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
+        # Windows parameters
         self.win_length = win_length
         self.win_overlap = win_overlap
+        # Differential entropy parameters
+        self.preprocess_de = preprocess_de
+        self.band_frequencies = band_frequencies
+        self.N_bands = len(self.band_frequencies)
+        # Other parameters
         self.normalization = normalization
         self.map_to_grid = map_to_grid
 
@@ -241,7 +250,6 @@ class ValidationDataset(Dataset):
         data = []
         labels = []
         trial_ids = []
-        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
         trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
             #Data
@@ -293,7 +301,7 @@ class ValidationDataset(Dataset):
     
     def map_to_grid(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
         self.data = mapper.apply(self.data)
@@ -303,7 +311,7 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     def normalize_data(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         if self.normalization == "all": # normalize across all instances
                 mean_tensor = torch.mean(self.data, dim=0)
@@ -320,8 +328,8 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     
     def compute_Diff_Entropy(self):
-        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        assert self.data.shape == (self.N_samples, 1, self.N_channels, self.win_length),  f"\
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, 1, self.N_channels, self.win_length)}"
         
         # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
         # Stack eeg windows -- > input: (N, C, W)
@@ -369,6 +377,7 @@ class TestDataset(Dataset):
         if not preprocess_de and map_to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
+        # Global parameters
         if num_recordings:
             self.N_recordings = num_recordings
         else:
@@ -376,8 +385,15 @@ class TestDataset(Dataset):
         self.N_movies = num_movies
         self.N_channels = num_channels
         self.sampl_freq = sampling_frequency
+        self.trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
+        # Windows parameters
         self.win_length = win_length
         self.win_overlap = win_overlap
+        # Differential entropy parameters
+        self.preprocess_de = preprocess_de
+        self.band_frequencies = band_frequencies
+        self.N_bands = len(self.band_frequencies)
+        # Other parameters
         self.normalization = normalization
         self.map_to_grid = map_to_grid
 
@@ -388,7 +404,6 @@ class TestDataset(Dataset):
         data = []
         labels = []
         trial_ids = []
-        trials_ids_unique = torch.arange(1, self.N_recordings + 1, step=1)
         trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading test data files"):
             #Data
@@ -440,7 +455,7 @@ class TestDataset(Dataset):
     
     def map_to_grid(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         mapper = ToGrid(SEED_CHANNEL_LIST, SEED_LOCATION_LIST)
         self.data = mapper.apply(self.data)
@@ -450,7 +465,7 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     def normalize_data(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, self.N_bands, self.N_channels)}"
         
         if self.normalization == "all": # normalize across all instances
                 mean_tensor = torch.mean(self.data, dim=0)
@@ -467,8 +482,8 @@ The shape of the input data {self.data.shape} differs from the one expected {(se
     
     
     def compute_Diff_Entropy(self):
-        assert self.data.shape == (self.N_samples, self.N_channels, self.win_length),  f"\
-The shape of the input data {self.data.shape} differs from the one expected {(self.N_samples, self.N_channels, self.win_length)}"
+        assert self.data.shape == (self.N_samples, 1, self.N_channels, self.win_length),  f"\
+The shape of the input data {tuple(self.data.shape)} differs from the one expected {(self.N_samples, 1, self.N_channels, self.win_length)}"
         
         # Legend: N=num_samples(split in windows), C=num_channels, W=window_length, F+num_band_frequencies
         # Stack eeg windows -- > input: (N, C, W)
