@@ -203,10 +203,6 @@ The shape of the input data {tuple(self.data.shape)} differs from the one expect
         label = self.labels[index]
         trial_id = self.trial_ids[index]
 
-        if self.data_augmentation:
-            if random() > 0.2:
-                sample = add_gaussian_noise(sample)
-
         return sample, label, trial_id
 #--------------------------------------------------------------------------
 
