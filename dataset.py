@@ -55,10 +55,10 @@ class TrainDataset(Dataset):
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
-        map_to_grid: Optional[bool] = False,
+        to_grid: Optional[bool] = False,
     ):
         
-        if not preprocess_de and map_to_grid:
+        if not preprocess_de and to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
             
         # Global parameters
@@ -79,7 +79,7 @@ class TrainDataset(Dataset):
         self.N_bands = len(self.band_frequencies)
         # Other parameters
         self.normalization = normalization
-        self.map_to_grid = map_to_grid
+        self.to_grid = to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -133,7 +133,7 @@ class TrainDataset(Dataset):
             self.data = self.normalize_data()
 
             # If required, map data to a 2D grid made by electrodes positions
-            if self.map_to_grid:
+            if self.to_grid:
                 self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
@@ -217,10 +217,10 @@ class ValidationDataset(Dataset):
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
-        map_to_grid: Optional[bool] = False,
+        to_grid: Optional[bool] = False,
     ):
         
-        if not preprocess_de and map_to_grid:
+        if not preprocess_de and to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
         # Global parameters
@@ -241,7 +241,7 @@ class ValidationDataset(Dataset):
         self.N_bands = len(self.band_frequencies)
         # Other parameters
         self.normalization = normalization
-        self.map_to_grid = map_to_grid
+        self.to_grid = to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -292,7 +292,7 @@ class ValidationDataset(Dataset):
             self.data = self.normalize_data()
 
             # If required, map data to a 2D grid made by electrodes positions
-            if self.map_to_grid:
+            if self.to_grid:
                 self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
@@ -371,10 +371,10 @@ class TestDataset(Dataset):
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
-        map_to_grid: Optional[bool] = False,
+        to_grid: Optional[bool] = False,
     ):
 
-        if not preprocess_de and map_to_grid:
+        if not preprocess_de and to_grid:
             warnings.warn("You set `preprocess_de=False`, so cannot map eeg data to grid.")
 
         # Global parameters
@@ -395,7 +395,7 @@ class TestDataset(Dataset):
         self.N_bands = len(self.band_frequencies)
         # Other parameters
         self.normalization = normalization
-        self.map_to_grid = map_to_grid
+        self.to_grid = to_grid
 
         # Load data and labels, store them in torch tensors
         eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
@@ -446,7 +446,7 @@ class TestDataset(Dataset):
             self.data = self.normalize_data()
 
             # If required, map data to a 2D grid made by electrodes positions
-            if self.map_to_grid:
+            if self.to_grid:
                 self.data = self.map_to_grid()
             else:
                 self.data = self.data.reshape(self.N_samples, -1)
