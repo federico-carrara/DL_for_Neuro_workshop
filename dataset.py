@@ -28,7 +28,9 @@ class TrainDataset(Dataset):
         sampling_frequency: Optional[int] = 200,
         data_augmentation: Optional[bool] = True,
         preprocess_de: Optional[bool] = True,
-        band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
+        band_frequencies: Optional[List[Tuple[int, int]]] = [
+            (4, 8), (8, 14), (14, 31), (31, 49)
+        ]
     ):
     
         if num_recordings:
@@ -47,24 +49,34 @@ class TrainDataset(Dataset):
         labels_unique = labels_dict["label"].squeeze(0)
         data = []
         labels = []
+        trial_ids = []
+        trial_id = 0
         for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
+            #Data
             curr_data = load_eeg_data_file(
                 path_to_file=os.path.join(path_to_data_dir, eeg_file),
                 num_keys=self.N_movies,
             )
             curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
             data.extend(curr_windowized_data)
+            #Labels    
             curr_labels = [
                 torch.tensor([labels_unique[i]] * num_windows[i])
                 for i in range(len(curr_data))
             ]
-            labels.append(torch.concat(curr_labels, axis=0))
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+        
         data = [tens.unsqueeze(0) for tens in data]
         self.data = torch.concat(data, axis=0).unsqueeze(1)
         self.data = self.data.type(torch.float32)
         self.labels = torch.concat(labels)
         self.labels += 1
         self.labels = self.labels.type(torch.int64)
+        self.trial_ids = torch.concat(trial_ids)
         self.N_samples = self.data.shape[0]
 
         assert len(self.labels) == len(self.data), "Data and labels are not paired..."
@@ -79,7 +91,7 @@ class TrainDataset(Dataset):
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
+                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
@@ -95,8 +107,6 @@ class TrainDataset(Dataset):
         label = self.labels[index]
 
         if self.data_augmentation:
-            if random() > 0.2:
-                sample = shuffle_channels(sample)
             if random() > 0.2:
                 sample = add_gaussian_noise(sample)
 
@@ -116,7 +126,9 @@ class ValidationDataset(Dataset):
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
         preprocess_de: Optional[bool] = True,
-        band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
+        band_frequencies: Optional[List[Tuple[int, int]]] = [
+            (4, 8), (8, 14), (14, 31), (31, 49)
+        ] 
     ):
 
         if num_recordings:
@@ -164,7 +176,7 @@ class ValidationDataset(Dataset):
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
+                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
@@ -195,7 +207,9 @@ class TestDataset(Dataset):
         num_channels: Optional[int] = 62,
         sampling_frequency: Optional[int] = 200,
         preprocess_de: Optional[bool] = True,
-        band_frequencies: Optional[List[Tuple[int, int]]] = [(4, 7), (8, 13), (14, 30), (31, 50)] 
+        band_frequencies: Optional[List[Tuple[int, int]]] = [
+            (4, 8), (8, 14), (14, 31), (31, 49)
+        ]
     ):
 
         if num_recordings:
@@ -243,7 +257,7 @@ class TestDataset(Dataset):
             self.band_freqs = band_frequencies
             self.data = torch.stack([
                 bandpower_diff_entropy(self.data, self.sampl_freq, band_freq)
-                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band:")
+                for band_freq in tqdm(self.band_freqs, desc="Computing DE on band")
             ])
             self.data = self.data.reshape(-1, self.N_samples, self.N_channels)
             self.data = self.data.swapaxes(0, 1)
