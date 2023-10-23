@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from dataset_v2 import SEEDDataset
-from model import EEGFeedForwardNet
+from FFNN_model import EEGFeedForwardNet
 import pytorch_lightning as pl
 
 window_length = 2000

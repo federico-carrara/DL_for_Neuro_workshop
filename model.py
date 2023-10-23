@@ -1,9 +1,6 @@
 import torch
 import torch.nn as nn
-try:
-    import pytorch_lightning as pl
-except:
-    import lightning as pl
+import pytorch_lightning as pl
 from torcheval.metrics.functional import (
     multiclass_accuracy,
     multiclass_f1_score

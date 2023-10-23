@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from dataset_v2 import SEEDDataset
-from model import CCNN
+from CNN_model import CCNN
 import pytorch_lightning as pl
 
 num_train_recordings = 36
