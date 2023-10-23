@@ -54,8 +54,7 @@ class TrainDataset(Dataset):
             (4, 8), (8, 14), (14, 31), (31, 49)
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
-        to_grid: Optional[bool] = False,
-        path_to_preprocessed: Optional[str] = None
+        to_grid: Optional[bool] = False
     ):
         
         if not preprocess_de and to_grid:
@@ -80,75 +79,64 @@ class TrainDataset(Dataset):
         # Other parameters
         self.normalization = normalization
         self.to_grid = to_grid
-        self.path_to_preprocessed = path_to_preprocessed
 
-        if not self.path_to_preprocessed:
-            # Load data and labels from files, store them in torch tensors
-            eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
-            labels_dict = loadmat(path_to_labels)
-            labels_unique = labels_dict["label"].squeeze(0)
-            data = []
-            labels = []
-            trial_ids = []
-            trial_id = 0
-            for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
-                #Data
-                curr_data = load_eeg_data_file(
-                    path_to_file=os.path.join(path_to_data_dir, eeg_file),
-                    num_keys=self.N_movies,
-                )
-                curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
-                data.extend(curr_windowized_data)
-                #Labels    
-                curr_labels = [
-                    torch.tensor([labels_unique[i]] * num_windows[i])
-                    for i in range(len(curr_data))
-                ]
-                curr_labels = torch.concat(curr_labels, axis=0)
-                labels.append(curr_labels)
-                #Subject/trial id
-                trial_id += 1
-                trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+        # Load data and labels from files, store them in torch tensors
+        eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
+        labels_dict = loadmat(path_to_labels)
+        labels_unique = labels_dict["label"].squeeze(0)
+        data = []
+        labels = []
+        trial_ids = []
+        trial_id = 0
+        for eeg_file in tqdm(eeg_files, desc="Loading training data files"):
+            #Data
+            curr_data = load_eeg_data_file(
+                path_to_file=os.path.join(path_to_data_dir, eeg_file),
+                num_keys=self.N_movies,
+            )
+            curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
+            data.extend(curr_windowized_data)
+            #Labels    
+            curr_labels = [
+                torch.tensor([labels_unique[i]] * num_windows[i])
+                for i in range(len(curr_data))
+            ]
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
 
-            data = [tens.unsqueeze(0) for tens in data]
-            self.data = torch.concat(data, axis=0).unsqueeze(1)
-            self.labels = torch.concat(labels)
-            self.labels += 1
-            self.trial_ids = torch.concat(trial_ids)
-        
-            # Set proper data type
-            self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type(torch.int64)
-            self.trial_ids = self.trial_ids.type(torch.int64)
-            self.N_samples = self.data.shape[0]
+        data = [tens.unsqueeze(0) for tens in data]
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.labels = torch.concat(labels)
+        self.labels += 1
+        self.trial_ids = torch.concat(trial_ids)
+    
+        # Set proper data type
+        self.data = self.data.type(torch.float32)
+        self.labels = self.labels.type(torch.int64)
+        self.trial_ids = self.trial_ids.type(torch.int64)
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+
+        # Preprocessing: apply Differential Entropy on single channels (if not already done)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
+
+            # If required, map data to a 2D grid made by electrodes positions
+            if self.to_grid:
+                self.data = self.map_to_grid()
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
-
-            # Preprocessing: apply Differential Entropy on single channels (if not already done)
-            if self.preprocess_de and not self.path_to_preprocessed:
-                
-                # Exctract DE channel-wise
-                self.data = self.compute_Diff_Entropy()
-                
-                # Normalize data according the method given above
-                self.data = self.normalize_data()
-
-                # If required, map data to a 2D grid made by electrodes positions
-                if self.to_grid:
-                    self.data = self.map_to_grid()
-                else:
-                    self.data = self.data.reshape(self.N_samples, -1)
-
-                assert len(self.labels) == len(self.data), "Data and labels are not paired..."
-
-        else:
-            # Load preprocessed data to save time
-            print(f"Loading preprocessed data at {self.path_to_preprocessed}...")
-            with h5py.File(self.path_to_preprocessed, "r") as file:
-                self.data = torch.tensor(file["data"][:], dtype=torch.float32)
-                self.labels = torch.tensor(file["labels"][:], dtype=torch.int64)
-                self.trial_ids = torch.tensor(file["trial_ids"][:], dtype=torch.int64)
-                self.N_samples = self.data.shape[0]
     
     
     def map_to_grid(self):
@@ -224,7 +212,6 @@ class ValidationDataset(Dataset):
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
         to_grid: Optional[bool] = False,
-        path_to_preprocessed: Optional[str] = None
     ):
         
         if not preprocess_de and to_grid:
@@ -249,74 +236,63 @@ class ValidationDataset(Dataset):
         # Other parameters
         self.normalization = normalization
         self.to_grid = to_grid
-        self.path_to_preprocessed = path_to_preprocessed
 
-        if not self.path_to_preprocessed:
-            # Load data and labels from files, store them in torch tensors
-            eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
-            labels_dict = loadmat(path_to_labels)
-            labels_unique = labels_dict["label"].squeeze(0)
-            data = []
-            labels = []
-            trial_ids = []
-            trial_id = 0
-            for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
-                #Data
-                curr_data = load_eeg_data_file(
-                    path_to_file=os.path.join(path_to_data_dir, eeg_file),
-                    num_keys=self.N_movies,
-                )
-                curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
-                data.extend(curr_windowized_data)
-                #Labels    
-                curr_labels = [
-                    torch.tensor([labels_unique[i]] * num_windows[i])
-                    for i in range(len(curr_data))
-                ]
-                curr_labels = torch.concat(curr_labels, axis=0)
-                labels.append(curr_labels)
-                #Subject/trial id
-                trial_id += 1
-                trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+        # Load data and labels from files, store them in torch tensors
+        eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
+        labels_dict = loadmat(path_to_labels)
+        labels_unique = labels_dict["label"].squeeze(0)
+        data = []
+        labels = []
+        trial_ids = []
+        trial_id = 0
+        for eeg_file in tqdm(eeg_files, desc="Loading validation data files"):
+            #Data
+            curr_data = load_eeg_data_file(
+                path_to_file=os.path.join(path_to_data_dir, eeg_file),
+                num_keys=self.N_movies,
+            )
+            curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
+            data.extend(curr_windowized_data)
+            #Labels    
+            curr_labels = [
+                torch.tensor([labels_unique[i]] * num_windows[i])
+                for i in range(len(curr_data))
+            ]
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
 
-            data = [tens.unsqueeze(0) for tens in data]
-            self.data = torch.concat(data, axis=0).unsqueeze(1)
-            self.labels = torch.concat(labels)
-            self.labels += 1
-            self.trial_ids = torch.concat(trial_ids)
-            # Set proper data type
-            self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type(torch.int64)
-            self.trial_ids = self.trial_ids.type(torch.int64)
-            self.N_samples = self.data.shape[0]
+        data = [tens.unsqueeze(0) for tens in data]
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.labels = torch.concat(labels)
+        self.labels += 1
+        self.trial_ids = torch.concat(trial_ids)
+        # Set proper data type
+        self.data = self.data.type(torch.float32)
+        self.labels = self.labels.type(torch.int64)
+        self.trial_ids = self.trial_ids.type(torch.int64)
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+
+        # Preprocessing: apply Differential Entropy on single channels (if not already done)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
+
+            # If required, map data to a 2D grid made by electrodes positions
+            if self.to_grid:
+                self.data = self.map_to_grid()
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
-
-            # Preprocessing: apply Differential Entropy on single channels (if not already done)
-            if self.preprocess_de and not self.path_to_preprocessed:
-                
-                # Exctract DE channel-wise
-                self.data = self.compute_Diff_Entropy()
-                
-                # Normalize data according the method given above
-                self.data = self.normalize_data()
-
-                # If required, map data to a 2D grid made by electrodes positions
-                if self.to_grid:
-                    self.data = self.map_to_grid()
-                else:
-                    self.data = self.data.reshape(self.N_samples, -1)
-
-                assert len(self.labels) == len(self.data), "Data and labels are not paired..."
-
-        else:
-            # Load preprocessed data to save time
-            print(f"Loading preprocessed data at {self.path_to_preprocessed}...")
-            with h5py.File(self.path_to_preprocessed, "r") as file:
-                self.data = torch.tensor(file["data"][:], dtype=torch.float32)
-                self.labels = torch.tensor(file["labels"][:], dtype=torch.int64)
-                self.trial_ids = torch.tensor(file["trial_ids"][:], dtype=torch.int64)
-                self.N_samples = self.data.shape[0]
 
     
     def map_to_grid(self):
@@ -392,7 +368,6 @@ class TestDataset(Dataset):
         ],
         normalization: Optional[Literal["all", "trial"]] = "trial",
         to_grid: Optional[bool] = False,
-        path_to_preprocessed: Optional[str] = None
     ):
 
         if not preprocess_de and to_grid:
@@ -414,75 +389,65 @@ class TestDataset(Dataset):
         # Other parameters
         self.normalization = normalization
         self.to_grid = to_grid
-        self.path_to_preprocessed = path_to_preprocessed
 
-        if not self.path_to_preprocessed:
-            # Load data and labels from files, store them in torch tensors
-            eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
-            labels_dict = loadmat(path_to_labels)
-            labels_unique = labels_dict["label"].squeeze(0)
-            data = []
-            labels = []
-            trial_ids = []
-            trial_id = 0
-            for eeg_file in tqdm(eeg_files, desc="Loading test data files"):
-                #Data
-                curr_data = load_eeg_data_file(
-                    path_to_file=os.path.join(path_to_data_dir, eeg_file),
-                    num_keys=self.N_movies,
-                )
-                curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
-                data.extend(curr_windowized_data)
-                #Labels    
-                curr_labels = [
-                    torch.tensor([labels_unique[i]] * num_windows[i])
-                    for i in range(len(curr_data))
-                ]
-                curr_labels = torch.concat(curr_labels, axis=0)
-                labels.append(curr_labels)
-                #Subject/trial id
-                trial_id += 1
-                trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
+        # Load data and labels from files, store them in torch tensors
+        eeg_files = [fname for fname in os.listdir(path_to_data_dir) if fname[0] in string.digits]
+        labels_dict = loadmat(path_to_labels)
+        labels_unique = labels_dict["label"].squeeze(0)
+        data = []
+        labels = []
+        trial_ids = []
+        trial_id = 0
+        for eeg_file in tqdm(eeg_files, desc="Loading test data files"):
+            #Data
+            curr_data = load_eeg_data_file(
+                path_to_file=os.path.join(path_to_data_dir, eeg_file),
+                num_keys=self.N_movies,
+            )
+            curr_windowized_data, num_windows = windowize_signal(curr_data, self.win_length, self.win_overlap)
+            data.extend(curr_windowized_data)
+            #Labels    
+            curr_labels = [
+                torch.tensor([labels_unique[i]] * num_windows[i])
+                for i in range(len(curr_data))
+            ]
+            curr_labels = torch.concat(curr_labels, axis=0)
+            labels.append(curr_labels)
+            #Subject/trial id
+            trial_id += 1
+            trial_ids.append(torch.tensor([trial_id] * len(curr_labels)))
 
-            data = [tens.unsqueeze(0) for tens in data]
-            self.data = torch.concat(data, axis=0).unsqueeze(1)
-            self.labels = torch.concat(labels)
-            self.labels += 1
-            self.trial_ids = torch.concat(trial_ids)
+        data = [tens.unsqueeze(0) for tens in data]
+        self.data = torch.concat(data, axis=0).unsqueeze(1)
+        self.labels = torch.concat(labels)
+        self.labels += 1
+        self.trial_ids = torch.concat(trial_ids)
 
-                    # Set proper data type
-            self.data = self.data.type(torch.float32)
-            self.labels = self.labels.type(torch.int64)
-            self.trial_ids = self.trial_ids.type(torch.int64)
-            self.N_samples = self.data.shape[0]
+                # Set proper data type
+        self.data = self.data.type(torch.float32)
+        self.labels = self.labels.type(torch.int64)
+        self.trial_ids = self.trial_ids.type(torch.int64)
+        self.N_samples = self.data.shape[0]
+
+        assert len(self.labels) == len(self.data), "Data and labels are not paired..."
+
+        # Preprocessing: apply Differential Entropy on single channels (if not already done)
+        if self.preprocess_de:
+            
+            # Exctract DE channel-wise
+            self.data = self.compute_Diff_Entropy()
+            
+            # Normalize data according the method given above
+            self.data = self.normalize_data()
+
+            # If required, map data to a 2D grid made by electrodes positions
+            if self.to_grid:
+                self.data = self.map_to_grid()
+            else:
+                self.data = self.data.reshape(self.N_samples, -1)
 
             assert len(self.labels) == len(self.data), "Data and labels are not paired..."
 
-            # Preprocessing: apply Differential Entropy on single channels (if not already done)
-            if self.preprocess_de and not self.path_to_preprocessed:
-                
-                # Exctract DE channel-wise
-                self.data = self.compute_Diff_Entropy()
-                
-                # Normalize data according the method given above
-                self.data = self.normalize_data()
-
-                # If required, map data to a 2D grid made by electrodes positions
-                if self.to_grid:
-                    self.data = self.map_to_grid()
-                else:
-                    self.data = self.data.reshape(self.N_samples, -1)
-
-                assert len(self.labels) == len(self.data), "Data and labels are not paired..."
-
-        else:
-            # Load preprocessed data to save time
-            print(f"Loading preprocessed data at {self.path_to_preprocessed}...")
-            with h5py.File(self.path_to_preprocessed, "r") as file:
-                self.data = torch.tensor(file["data"][:], dtype=torch.float32)
-                self.labels = torch.tensor(file["labels"][:], dtype=torch.int64)
-                self.trial_ids = torch.tensor(file["trial_ids"][:], dtype=torch.int64)
-                self.N_samples = self.data.shape[0]
     
     def map_to_grid(self):
         assert self.data.shape == (self.N_samples, self.N_bands, self.N_channels),  f"\
