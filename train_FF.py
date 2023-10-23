@@ -1,10 +1,9 @@
 from torch.utils.data import DataLoader
-from dataset import TrainDataset, ValidationDataset, TestDataset
+from dataset_v2 import SEEDDataset
 from model import EEGFeedForwardNet
 import pytorch_lightning as pl
 
 window_length = 2000
-window_overlap = 200
 batch_sz = 64
 model_params = {
     "input_size": 248,
@@ -21,34 +20,19 @@ training_params = {
     "lr_patience": 3
 }
 
-train_dataset = TrainDataset(
-    path_to_data_dir="../data/train/", 
-    path_to_labels="../data/label.mat", 
-    win_length=window_length, 
-    win_overlap=window_overlap, 
-    preprocess_de=True,
-    normalization="trial",
-    map_to_grid=False,
-    path_to_preprocessed=None
+train_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/train_data_processed_win{window_length}_grid.h5",
+    split="train"
 )
 print("------------------------------------------------------------")
-val_dataset = ValidationDataset(
-    path_to_data_dir="../data/valid/", 
-    path_to_labels="../data/label.mat", 
-    win_length=window_length, 
-    win_overlap=window_overlap,
-    preprocess_de=True, 
-    normalization="trial"
+val_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/valid_data_processed_win{window_length}_grid.h5",
+    split="validation"
 )
 print("------------------------------------------------------------")
-test_dataset = TestDataset(
-    path_to_data_dir="../data/test/", 
-    path_to_labels="../data/label.mat", 
-    win_length=window_length, 
-    win_overlap=window_overlap,
-    preprocess_de=True,
-    normalization="trial",
-    map_to_grid=False
+test_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/test_data_processed_win{window_length}_grid.h5",
+    split="test"
 )
 print("------------------------------------------------------------")
 

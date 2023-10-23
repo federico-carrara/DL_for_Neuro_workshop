@@ -1,5 +1,5 @@
 from torch.utils.data import DataLoader
-from dataset import TrainDataset, ValidationDataset, TestDataset
+from dataset_v2 import SEEDDataset
 from model import CCNN
 import pytorch_lightning as pl
 
@@ -8,7 +8,6 @@ num_valid_recordings = 6
 num_test_recordings = 3
 
 window_length = 2000
-window_overlap = 200
 batch_sz = 64
 model_params = {
     "input_ch": 4, 
@@ -27,25 +26,19 @@ training_params = {
     "lr_patience": 3
 }
 
-train_dataset = TrainDataset(
-    path_to_data_dir=None, 
-    path_to_labels=None,
-    num_recordings=num_train_recordings,
-    path_to_preprocessed=f"../data/processed_data_grid/train_data_processed_win{window_length}_grid.h5"
+train_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/train_data_processed_win{window_length}_grid.h5",
+    split="train"
 )
 print("------------------------------------------------------------")
-val_dataset = ValidationDataset(
-    path_to_data_dir=None, 
-    path_to_labels=None,
-    num_recordings=num_valid_recordings,
-    path_to_preprocessed=f"../data/processed_data_grid/valid_data_processed_win{window_length}_grid.h5"
+val_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/valid_data_processed_win{window_length}_grid.h5",
+    split="validation"
 )
 print("------------------------------------------------------------")
-test_dataset = TestDataset(
-    path_to_data_dir=None, 
-    path_to_labels=None,
-    num_recordings=num_valid_recordings,
-    path_to_preprocessed=f"../data/processed_data_grid/test_data_processed_win{window_length}_grid.h5"
+test_dataset = SEEDDataset(
+    path_to_preprocessed=f"../data/processed_data_grid/test_data_processed_win{window_length}_grid.h5",
+    split="test"
 )
 print("------------------------------------------------------------")
 
@@ -75,6 +68,7 @@ lr_monitor = pl.callbacks.LearningRateMonitor(logging_interval='epoch')
 trainer = pl.Trainer(
     accelerator="gpu",
     max_epochs=training_params["epochs"], 
-    callbacks=[best_checkpoint_callback, last_checkpoint_callback, lr_monitor])
+    callbacks=[best_checkpoint_callback, last_checkpoint_callback, lr_monitor]
+)
 
 trainer.fit(eeg_net, train_dataloader, val_dataloader)
