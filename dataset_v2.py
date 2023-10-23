@@ -1,4 +1,3 @@
-import os
 import torch
 import h5py
 from torch.utils.data import Dataset
@@ -7,7 +6,7 @@ from torch.utils.data import Dataset
 In this script we create a simplified version of our Datasets in which we directly load pre-processed data.
 """
 
-class SEEDDatatset(Dataset):
+class SEEDDataset(Dataset):
     def __init__(
             self,
             path_to_preprocessed: str,
