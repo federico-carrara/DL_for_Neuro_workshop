@@ -21,7 +21,7 @@ class SEEDDatatset(Dataset):
         # Load preprocessed data to save time
         print(f"Loading preprocessed {self.split} data at {self.path_to_preprocessed}...")
         with h5py.File(self.path_to_preprocessed, "r") as file:
-            self.win_length = file["win_len"]
+            self.win_length = file["win_len"][:]
             self.data = torch.tensor(file["data"][:], dtype=torch.float32)
             self.labels = torch.tensor(file["labels"][:], dtype=torch.int64)
             self.trial_ids = torch.tensor(file["trial_ids"][:], dtype=torch.int64)
